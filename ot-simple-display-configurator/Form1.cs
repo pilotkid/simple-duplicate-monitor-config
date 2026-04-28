@@ -8,6 +8,7 @@ namespace ot_simple_display_configurator
         public Form1()
         {
             InitializeComponent();
+            this.Text = $"OT Display Configurator v{Application.ProductVersion}";
             reload_Click(null, null);
         }
 
