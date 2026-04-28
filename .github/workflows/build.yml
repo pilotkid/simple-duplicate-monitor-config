@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get next version
+        id: version
+        shell: pwsh
+        run: |
+          git fetch --tags
+          $tags = (git tag -l "v*" 2>&1) | Where-Object { $_ -notmatch '^fatal:' }
+          if ($tags) {
+            $parsed = $tags | ForEach-Object {
+              try { [version]($_ -replace '^v', '') } catch { $null }
+            } | Where-Object { $_ } | Sort-Object | Select-Object -Last 1
+            $patch = [Math]::Max($parsed.Build, 0)
+            $newVersion = "$($parsed.Major).$($parsed.Minor).$($patch + 1)"
+          } else {
+            $newVersion = "1.0.0"
+          }
+          echo "VERSION=$newVersion" >> $env:GITHUB_OUTPUT
+          echo "TAG=v$newVersion" >> $env:GITHUB_OUTPUT
+          Write-Host "Next version: $newVersion"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ot-simple-display-configurator/ot-simple-display-configurator.csproj
+
+      - name: Publish
+        run: |
+          dotnet publish ot-simple-display-configurator/ot-simple-display-configurator.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=embedded `
+            -p:Version=${{ steps.version.outputs.VERSION }} `
+            -p:AssemblyVersion=${{ steps.version.outputs.VERSION }} `
+            -p:FileVersion=${{ steps.version.outputs.VERSION }} `
+            -o publish
+
+      - name: Tag release
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.TAG }}
+          git push origin ${{ steps.version.outputs.TAG }}
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release create ${{ steps.version.outputs.TAG }} `
+            --title "Release ${{ steps.version.outputs.TAG }}" `
+            --generate-notes `
+            publish/ot-simple-display-configurator.exe
