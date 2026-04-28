@@ -22,12 +22,13 @@ jobs:
         shell: pwsh
         run: |
           git fetch --tags
-          $tags = git tag -l "v*" 2>$null
+          $tags = (git tag -l "v*" 2>&1) | Where-Object { $_ -notmatch '^fatal:' }
           if ($tags) {
             $parsed = $tags | ForEach-Object {
               try { [version]($_ -replace '^v', '') } catch { $null }
             } | Where-Object { $_ } | Sort-Object | Select-Object -Last 1
-            $newVersion = "$($parsed.Major).$($parsed.Minor).$($parsed.Build + 1)"
+            $patch = [Math]::Max($parsed.Build, 0)
+            $newVersion = "$($parsed.Major).$($parsed.Minor).$($patch + 1)"
           } else {
             $newVersion = "1.0.0"
           }
