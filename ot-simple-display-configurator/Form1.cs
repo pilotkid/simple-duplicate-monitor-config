@@ -1,15 +1,30 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
+using System.Timers;
 
 namespace ot_simple_display_configurator
 {
     public partial class Form1 : Form
     {
+
+        private readonly Dictionary<string, Form1> _formsByMonitor = new();
+
+        private SharedDisplaySettings _settings;
+        private bool _updatingCheckbox = false;
+        private bool _isSubForm = false;
+
         public Form1()
         {
             InitializeComponent();
             this.Text = $"OT Display Configurator v{Application.ProductVersion}";
-            reload_Click(null, null);
+            _settings = new SharedDisplaySettings();
+        }
+        public Form1(SharedDisplaySettings settings, bool isSubForm)
+        {
+            InitializeComponent();
+
+            _settings = settings;
+            _isSubForm = isSubForm;
         }
 
         private void label1_Click(object sender, EventArgs e)
@@ -37,6 +52,8 @@ namespace ot_simple_display_configurator
         }
 
         int reloadNumber = 0;
+        int lastKnownActiveScreens = -1;
+        int triggerReloadTick = -1;
         private void reload_Click(object? sender, EventArgs? e)
         {
             reloadNumber++;
@@ -52,6 +69,31 @@ namespace ot_simple_display_configurator
 
             int connectedDisplays = MonitorConfig.GetConnectedDisplayCount();
             int activeDisplays = MonitorConfig.GetActiveDisplayCount();
+
+            if (activeDisplays != lastKnownActiveScreens )
+            {
+                lastKnownActiveScreens = activeDisplays;
+                Debug.WriteLine($"Active screen count changed: {lastKnownActiveScreens}|{activeDisplays}");
+
+                if (show_on_all_monitors_box.Checked && show_on_all_monitors_box.Enabled && reloadNumber > 5)
+                {
+                    triggerReloadTick = reloadNumber + 3;                    
+                }
+            }
+
+            if(triggerReloadTick != -1 && reloadNumber >= triggerReloadTick)
+            {
+                triggerReloadTick = -1;
+                //After 5 seconds trigger this function
+
+                timer1.Enabled = false;
+                show_on_all_monitors_box.Enabled = false;
+                CloseMonitorForms();
+                DuplicateMainFormAcrossMonitors();
+                timer1.Enabled = true;
+                show_on_all_monitors_box.Enabled = true;
+            }
+
             monitors_detected_label.Text = "Monitors Detected = " + connectedDisplays + " (" + activeDisplays + " active)";
             todoLabel.Text = "Instructions will appear here";
             monitor_duplication_mode_label.Text = "";
@@ -101,6 +143,19 @@ namespace ot_simple_display_configurator
             }
 
             todoLabel.Text = "All systems appear to be operational. Monitors are configured correctly, and we are able to see the studio display output from this computer.\nIf issues still appear the issue could be:\n1. OT software needs to be restarted\n2. TVs are not on the right input\n3. Ethernet cable not connected for the HDMI adapter on both ends or broken";
+
+            //todo iterate thru all forms that aren't this one and update all labels and buttons to match this one
+            foreach (Form form in Application.OpenForms)
+            {
+                if (form != this && form is Form1 otherForm)
+                {
+                    otherForm.monitors_detected_label.Text = monitors_detected_label.Text;
+                    otherForm.todoLabel.Text = todoLabel.Text;
+                    otherForm.monitor_duplication_mode_label.Text = monitor_duplication_mode_label.Text;
+                    otherForm.valid_resolutions_label.Text = valid_resolutions_label.Text;
+                    otherForm.fix_multi_monitor_button.Visible = fix_multi_monitor_button.Visible;
+                }
+            }
         }
 
         private void fix_multi_monitor_button_Click(object sender, EventArgs e)
@@ -162,7 +217,131 @@ namespace ot_simple_display_configurator
 
 
             form.ShowDialog();
-            
+
+        }
+
+        private void DuplicateMainFormAcrossMonitors()
+        {
+            var currentScreen = Screen.FromControl(this);
+            _formsByMonitor[currentScreen.DeviceName] = this;
+            this.TopMost = true;
+
+            foreach (var screen in Screen.AllScreens)
+            {
+                if (_formsByMonitor.TryGetValue(screen.DeviceName, out var existing) &&
+                    existing != null &&
+                    !existing.IsDisposed)
+                {
+                    continue;
+                }
+
+                string deviceName = screen.DeviceName;
+
+                var form = new Form1(_settings, true);
+
+                form.StartPosition = FormStartPosition.Manual;
+                form.Location = screen.Bounds.Location;
+                form.WindowState = FormWindowState.Normal;
+                form.ControlBox = false;
+                form.Size = this.Size;
+                form.TopMost = true;
+                form.ShowInTaskbar = false;
+                form.Text = screen.DeviceName;
+
+                form.FormClosed += (_, _) =>
+                {
+                    if (_formsByMonitor.TryGetValue(deviceName, out var existingForm) &&
+                        ReferenceEquals(existingForm, form))
+                    {
+                        _formsByMonitor.Remove(deviceName);
+                        
+                    }
+                };
+
+                _formsByMonitor[deviceName] = form;
+                form.Show();
+            }
+        }
+        private void CloseMonitorForms()
+        {
+            foreach (var kvp in _formsByMonitor.ToList())
+            {
+                var form = kvp.Value;
+
+                if (ReferenceEquals(form, this))
+                    continue;
+
+                if (form != null && !form.IsDisposed)
+                    form.Close();
+            }
+
+            _formsByMonitor.Clear();
+
+            var currentScreen = Screen.FromControl(this);
+            _formsByMonitor[currentScreen.DeviceName] = this;
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            _settings.ShowOnAllMonitorsChanged += Settings_ShowOnAllMonitorsChanged;
+
+            _updatingCheckbox = true;
+            show_on_all_monitors_box.Checked = _settings.ShowOnAllMonitors;
+            _updatingCheckbox = false;
+
+            if (!_isSubForm)
+            {
+                _settings.ShowOnAllMonitors = true;
+                reload_Click(null, null);
+            }
+            else
+            {                
+                timer1.Enabled = false;
+                reload.Visible = false;
+                refresh_number.Text = "Secondary Window";
+            }
+        }
+
+        private void Settings_ShowOnAllMonitorsChanged(bool enabled)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => Settings_ShowOnAllMonitorsChanged(enabled)));
+                return;
+            }
+
+            _updatingCheckbox = true;
+            show_on_all_monitors_box.Checked = enabled;
+            _updatingCheckbox = false;
+
+            if (_isSubForm && !enabled)
+            {
+                Close();
+                return;
+            }
+
+            if (!_isSubForm)
+            {
+                show_on_all_monitors_box.Enabled = false;
+                if (enabled)
+                    DuplicateMainFormAcrossMonitors();
+                else
+                    CloseMonitorForms();
+                show_on_all_monitors_box.Enabled = true;
+            }
+        }
+
+        private void show_on_all_monitors_box_CheckedChanged(object sender, EventArgs e)
+        {
+            if (_updatingCheckbox)
+                return;
+
+            show_on_all_monitors_box.Enabled = false;
+
+            _settings.ShowOnAllMonitors = show_on_all_monitors_box.Checked;
+
+            show_on_all_monitors_box.Enabled = true;
         }
     }
+
 }

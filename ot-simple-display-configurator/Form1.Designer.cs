@@ -38,6 +38,7 @@
             timer1 = new System.Windows.Forms.Timer(components);
             refresh_number = new Label();
             groupBox1 = new GroupBox();
+            show_on_all_monitors_box = new CheckBox();
             groupBox1.SuspendLayout();
             SuspendLayout();
             // 
@@ -88,7 +89,7 @@
             // 
             // reload
             // 
-            reload.Location = new Point(713, 12);
+            reload.Location = new Point(713, 30);
             reload.Name = "reload";
             reload.Size = new Size(75, 23);
             reload.TabIndex = 5;
@@ -115,7 +116,7 @@
             // refresh_number
             // 
             refresh_number.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            refresh_number.Location = new Point(713, 38);
+            refresh_number.Location = new Point(713, 56);
             refresh_number.Name = "refresh_number";
             refresh_number.Size = new Size(75, 16);
             refresh_number.TabIndex = 7;
@@ -133,11 +134,23 @@
             groupBox1.TabStop = false;
             groupBox1.Text = "Solution Guide";
             // 
+            // show_on_all_monitors_box
+            // 
+            show_on_all_monitors_box.AutoSize = true;
+            show_on_all_monitors_box.Location = new Point(650, 9);
+            show_on_all_monitors_box.Name = "show_on_all_monitors_box";
+            show_on_all_monitors_box.Size = new Size(138, 19);
+            show_on_all_monitors_box.TabIndex = 9;
+            show_on_all_monitors_box.Text = "Show on all monitors";
+            show_on_all_monitors_box.UseVisualStyleBackColor = true;
+            show_on_all_monitors_box.CheckedChanged += show_on_all_monitors_box_CheckedChanged;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
+            Controls.Add(show_on_all_monitors_box);
             Controls.Add(groupBox1);
             Controls.Add(refresh_number);
             Controls.Add(valid_resolutions_label);
@@ -150,6 +163,7 @@
             Name = "Form1";
             Text = "0";
             TopMost = true;
+            Shown += Form1_Load;
             groupBox1.ResumeLayout(false);
             ResumeLayout(false);
             PerformLayout();
@@ -167,5 +181,6 @@
         private System.Windows.Forms.Timer timer1;
         private Label refresh_number;
         private GroupBox groupBox1;
+        private CheckBox show_on_all_monitors_box;
     }
 }
